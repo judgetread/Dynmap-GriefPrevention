@@ -2,12 +2,7 @@ package org.dynmap.griefprevention;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -15,6 +10,7 @@ import me.ryanhamshire.GriefPrevention.Claim;
 import me.ryanhamshire.GriefPrevention.DataStore;
 import me.ryanhamshire.GriefPrevention.GriefPrevention;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -25,6 +21,8 @@ import org.bukkit.event.server.PluginEnableEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 import org.dynmap.DynmapAPI;
 import org.dynmap.markers.AreaMarker;
 import org.dynmap.markers.MarkerAPI;
@@ -32,6 +30,7 @@ import org.dynmap.markers.MarkerSet;
 
 public class DynmapGriefPreventionPlugin extends JavaPlugin {
     private static Logger log;
+    public static BukkitTask t;
     private static final String DEF_INFOWINDOW = "div class=\"infowindow\">Claim Owner: <span style=\"font-weight:bold;\">%owner%</span><br/>Permission Trust: <span style=\"font-weight:bold;\">%managers%</span><br/>Trust: <span style=\"font-weight:bold;\">%builders%</span><br/>Container Trust: <span style=\"font-weight:bold;\">%containers%</span><br/>Access Trust: <span style=\"font-weight:bold;\">%accessors%</span></div>";
     private static final String DEF_ADMININFOWINDOW = "<div class=\"infowindow\"><span style=\"font-weight:bold;\">Administrator Claim</span><br/>Permission Trust: <span style=\"font-weight:bold;\">%managers%</span><br/>Trust: <span style=\"font-weight:bold;\">%builders%</span><br/>Container Trust: <span style=\"font-weight:bold;\">%containers%</span><br/>Access Trust: <span style=\"font-weight:bold;\">%accessors%</span></div>";
     private static final String ADMIN_ID = "administrator";
@@ -91,15 +90,16 @@ public class DynmapGriefPreventionPlugin extends JavaPlugin {
         log.log(Level.SEVERE, msg);
     }
 
-    private class GriefPreventionUpdate implements Runnable {
-        boolean repeat = true;
-        
+    private class GriefPreventionUpdate extends BukkitRunnable {
+
+        @Override
         public void run() {
             if(!stop) {
                 //doUpdate = false;
                 updateClaims();
-                if (repeat) {
-                    getServer().getScheduler().scheduleSyncDelayedTask(DynmapGriefPreventionPlugin.this, new GriefPreventionUpdate(), updperiod);
+            } else {
+                if(t != null && !t.isCancelled()){
+                    t.cancel();
                 }
             }
         }
@@ -242,17 +242,17 @@ public class DynmapGriefPreventionPlugin extends JavaPlugin {
         Map<String,AreaMarker> newmap = new HashMap<String,AreaMarker>(); /* Build new map */
  
         DataStore ds = gp.dataStore;
-        
-        ArrayList<Claim> claims = null;
-        try {
-            Field fld = DataStore.class.getDeclaredField("claims");
-            fld.setAccessible(true);
-            Object o = fld.get(ds);
-            claims = (ArrayList<Claim>)o;
-        } catch (NoSuchFieldException e) {
-        } catch (IllegalArgumentException e) {
-        } catch (IllegalAccessException e) {
-        }
+
+        ArrayList<Claim> claims = new ArrayList<Claim>(ds.getClaims());
+//        try {
+//            Field fld = DataStore.class.getDeclaredField("claims");
+//            fld.setAccessible(true);
+//            Object o = fld.get(ds);
+//            claims = (ArrayList<Claim>)o;
+//        } catch (NoSuchFieldException e) {
+//        } catch (IllegalArgumentException e) {
+//        } catch (IllegalAccessException e) {
+//        }
         /* If claims, process them */
         if(claims != null) {
             int sz = claims.size();
@@ -404,14 +404,18 @@ public class DynmapGriefPreventionPlugin extends JavaPlugin {
         updperiod = (long)(per*20);
         stop = false;
         
-        getServer().getScheduler().scheduleSyncDelayedTask(this, new GriefPreventionUpdate(), 40);   /* First time is 2 seconds */
+       // getServer().getScheduler().scheduleSyncDelayedTask(this, new GriefPreventionUpdate(), 40);   /* First time is 2 seconds */
+      // int taskID = getServer().getScheduler().scheduleSyncRepeatingTask(this, new GriefPreventionUpdate(), 40, updperiod);
 
-        //getServer().getPluginManager().registerEvents(new GPListener(), this);        
+        BukkitRunnable br = new GriefPreventionUpdate();
+        t =br.runTaskTimer(this, 40, updperiod);
+        //getServer().getPluginManager().registerEvents(new GPListener(), this);
 
         info("version " + this.getDescription().getVersion() + " is activated");
     }
 
     public void onDisable() {
+
         if(set != null) {
             set.deleteMarkerSet();
             set = null;
